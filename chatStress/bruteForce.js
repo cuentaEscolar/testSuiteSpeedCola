@@ -1,28 +1,56 @@
 const { io } = require("socket.io-client");
-console.log("awa")
+var request = require('request');
+const fs = require('node:fs');
+
+
+
+let currentUserId = process.env.CURRENTID;
+let targetUserId = process.env.TARGETID;
+let endpoint = process.env.ENDPOINT
+let password = process.env.PASSWORD
+let email = process.env.EMAIL
+let sleepDelay = process.env.SLEEP
+let requests = process.env.REQUESTS
+let cookie = null
+
+
+
+console.log(email)
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
-let currentUserId = 15;
-let targetUserId = 17;
-
 function loadChatHistory() {
-  console.log("awawa")
+  console.log("LoadingHistory")
   socket.emit('get_chat_history', {
-    userId1: 15,
-    userId2: 17,
+    userId1: currentUserId,
+    userId2: targetUserId,
     isProvider: true
   });
 }
+async function loadCookies() {
+
+  request.post(
+    'http://' + endpoint + '/api/login',
+    { json: { email: email, password: password } },
+    function (error, response, body) {
+      if (!error && response.statusCode == 200) {
+        console.log(body);
+        jsonResp = response.toJSON();
+        cookie = jsonResp.headers['set-cookie'][0].split(';')[0].split('=')[1]
+        console.log(cookie);
+      }
+    }
+  );
+
+}
 
 async function initChat() {
-  if (!targetUserId) {
-    console.log('Error: No se especificó destinatario');
-    return;
-  }
+  await loadCookies();
 
+  if (!targetUserId) return console.log('Error: No se especificó destinatario');
   // Verificar sesión primero usando tu endpoint existente
+  console.log("test1")
   try {
-    const response = await fetch('http://3.95.246.120/api/check-session', {
+    const response = await fetch('http://' + endpoint + '/api/check-session', {
       credentials: 'include'
     });
     const data = await response.json();
@@ -54,28 +82,19 @@ function sendMessage(contents) {
   const input = contents
   const message = input.trim();
 
-  console.log("Mensaje:", message);
-  console.log("Socket conectado:", socket?.connected);
-  console.log("Usuario actual:", currentUserId);
-  console.log("Usuario destino:", targetUserId);
-
-  if (!message) {
-    console.log("Mensaje vacío");
-    return;
-  }
-
+  if (!message) return console.log("Mensaje vacío");
   if (!socket || !socket.connected) {
     console.log("Socket no conectado");
     console.log('No estás conectado al servidor');
     return;
   }
+  if (!currentUserId || !targetUserId) return console.log("Faltan IDs de usuario");
 
-  if (!currentUserId || !targetUserId) {
-    console.log("Faltan IDs de usuario");
-    return;
-  }
+  console.log("Mensaje:", message);
+  console.log("Socket conectado:", socket?.connected);
+  console.log("Usuario actual:", currentUserId);
+  console.log("Usuario destino:", targetUserId);
 
-  // ASEGURAR QUE SON NÚMEROS
   const dataToSend = {
     toUserId: parseInt(targetUserId),
     message: message,
@@ -83,31 +102,28 @@ function sendMessage(contents) {
   };
 
   console.log("Enviando datos:", dataToSend);
-
-  // Enviar al servidor
   socket.emit('send_private_message', dataToSend);
 
-  // Mostrar en UI inmediatamente
-
-  input.value = '';
 }
 initChat();
 
-const socket = io("http://3.95.246.120");
 
-async function asshole() {
+async function stress() {
 
-  for (let index = 99; index < 9999; index++) {
-    await sleep(1);
-    sendMessage("" + index);
+  for (let index = 0; index < requests; index++) {
+    await sleep(sleepDelay);
+    sendMessage("stress_" + index);
 
   }
 }
 
+const socket = io('http://' + endpoint);
 socket.on("connect", () => {
   console.log("Connected!");
-  socket.emit("authenticate", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTUsIm5hbWUiOiIxMiIsImVtYWlsIjoiMTJAMTIuY29tIiwicGhvbmUiOiIxMiIsImlzcHJvdmlkZXIiOjEsImlhdCI6MTc2MTg2MDk5NCwiZXhwIjoxNzYxODY0NTk0fQ.rVFtvGFSzRLaNfbjzoigOi5_Iy2ZVPDEjD_5gioE0TY");
-  asshole();
+  socket.emit("authenticate",
+    cookie
+  );
+  stress();
   //loadChatHistory()
 });
 
